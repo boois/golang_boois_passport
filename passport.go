@@ -14,6 +14,7 @@ import (
 
 type BooisPassport struct {
 	BooisPassportAdapter BooisPassportAdapter // 适配器
+	ErrorMsgs 			 map[int] string 	  // 适配器
 	AccountRegex         string               // 账号规则
 	AccountMinLen        int                  // 账号最小长度
 	AccountMaxLen        int                  // 账号最大长度
@@ -28,6 +29,22 @@ type BooisPassport struct {
 	CookiesMaxAge		 int				  // cookies缓存的时间,如果不使用cookies可设为-1
 	LoginUserUnique		 bool				  // 是否保持唯一登录,如果开启此选项,则同一个账号多点登录会互踢
 
+}
+
+func (this *BooisPassport) getErrMsgsMap() map[int] string {
+	if this.ErrorMsgs == nil {
+		this.ErrorMsgs = make(map[int] string)
+	}
+	return this.ErrorMsgs
+}
+func (this *BooisPassport) getErrMsg(key int) string{
+	if v,ok := this.getErrMsgsMap()[key];ok{
+		return v
+	}
+	if v,ok := GetDefaultErrorMsgsMap()[key];ok {
+		return v
+	}
+	return "未定义的错误"
 }
 
 // 获取错误次数Map
@@ -80,16 +97,16 @@ func (this *BooisPassport) chkAccountFormat(account string) error{
 	// 先检查长度
 	acc_arr := []rune(account)
 	if len(acc_arr) == 0 {
-		return errors.New("账号不能为空")
+		return errors.New(this.getErrMsg(ERR_ACC_EMPTY))//"账号不能为空"
 	}
 	if len(acc_arr) < this.AccountMinLen || len(acc_arr) > this.AccountMaxLen {
-		return errors.New(fmt.Sprintf("账号的长度只能为%d-%d",this.AccountMinLen,this.AccountMaxLen))
+		return errors.New(fmt.Sprintf(this.getErrMsg(ERR_ACC_LEN_FAIL),this.AccountMinLen,this.AccountMaxLen))//"账号的长度只能为%d-%d"
 	}
 	// 再检查格式
 	if this.AccountRegex == "" {this.AccountRegex = "^[\\s\\S]*$"}
 	if reg,err := regexp.Compile(this.AccountRegex); err == nil {
 		if reg.FindAllString(account,-1) == nil{
-			return errors.New("账号格式错误")
+			return errors.New(this.getErrMsg(ERR_ACC_FMT_FAIL))//"账号格式错误"
 		}
 	}
 	return nil
@@ -99,16 +116,16 @@ func (this *BooisPassport) chkPswFormat(psw string) error{
 	// 先检查长度
 	psw_arr := []rune(psw)
 	if len(psw_arr) == 0 {
-		return errors.New("密码不能为空")
+		return errors.New(this.getErrMsg(ERR_PSW_EMPTY))//"密码不能为空"
 	}
 	if len(psw_arr) < this.PswMinLen || len(psw_arr) > this.PswMaxLen {
-		return errors.New(fmt.Sprintf("密码的长度只能为%d-%d",this.PswMinLen,this.PswMaxLen))
+		return errors.New(fmt.Sprintf(this.getErrMsg(ERR_PSW_LEN_FAIL),this.PswMinLen,this.PswMaxLen))//"密码的长度只能为%d-%d"
 	}
 	// 再检查格式
 	if this.PswRegex == "" {this.PswRegex = "^[\\s\\S]*$"}
 	if reg,err := regexp.Compile(this.PswRegex); err == nil {
 		if reg.FindAllString(psw,-1) == nil{
-			return errors.New("密码格式错误")
+			return errors.New(this.getErrMsg(ERR_PSW_FMT_FAIL))//"密码格式错误"
 		}
 	}
 	return nil
@@ -121,8 +138,6 @@ func (this *BooisPassport) sign(v string) string{
 	cipherStr := m.Sum(nil)
 	return hex.EncodeToString(cipherStr)
 }
-
-
 // 登陆
 func (this *BooisPassport) Login(w http.ResponseWriter,account string, psw string) (PassportInfo,error) {
 	// 1.预处理登陆前的事件
@@ -133,7 +148,7 @@ func (this *BooisPassport) Login(w http.ResponseWriter,account string, psw strin
 	//  2.先检查是否超过了错误次数,如果超过了,则直接返回错误
 	timespan := this.chkErrDate(account);
 	if timespan > 0 {
-		err := errors.New(fmt.Sprintf("超过了错误次数,请稍后在%d秒后再试",timespan))
+		err := errors.New(fmt.Sprintf(this.getErrMsg(ERR_TIME_LOCKED),timespan))//"超过了错误次数,请稍后在%d秒后再试"
 		this.loginFail(account,err) // 失败回调
 		return PassportInfo{},err
 	}
@@ -159,13 +174,13 @@ func (this *BooisPassport) Login(w http.ResponseWriter,account string, psw strin
 	if login_info.Psw != this.BooisPassportAdapter.EncryptPsw(psw) {
 		//如果密码不一致,先累计一次登录错误记录
 		count := this.plusErrCount(account)
-		err := errors.New("密码错误,还有"+fmt.Sprint(this.ErrCount-count)+"次机会")
+		err := errors.New(fmt.Sprintf(this.getErrMsg(ERR_PSW_FAIL),this.ErrCount-count))//"密码错误,还有%d次机会"
 		this.loginFail(account,err) // 失败回调
 		return login_info,err
 	}
 	// 6. 用户是否被锁定
 	if login_info.Locked {
-		return login_info,errors.New("您已被锁定登录,请联系管理员解锁")
+		return login_info,errors.New(this.getErrMsg(ERR_USER_LOCKED))//"您已被锁定登录,请联系管理员解锁"
 	}
 	// 7. 成功,清理错误信息记录
 	this.clearErrCount(account)
@@ -227,12 +242,12 @@ func (this *BooisPassport) GetSessionUser(account string) (PassportInfo,error) {
 func (this *BooisPassport) GetCookiesUser(r *http.Request) (PassportInfo,error) {
 	ck,err := r.Cookie("__boois_passport_user_account__");//从cookies中获取用户资料
 	if ck==nil || err != nil{
-		return PassportInfo{},errors.New("没有获取到用户资料")
+		return PassportInfo{},errors.New(this.getErrMsg(ERR_USER_NONE))//"没有获取到用户资料"
 	}
 	ckstr := ck.Value
 	args := strings.Split(ckstr,"|")
 	if len(args) != 3 {
-		return PassportInfo{},errors.New("cookies记录读取失败")
+		return PassportInfo{},errors.New(this.getErrMsg(ERR_CK_FAIL))//"cookies记录读取失败"
 	}
 	user, err := this.GetSessionUser(args[0])
 	if err != nil {
@@ -241,12 +256,12 @@ func (this *BooisPassport) GetCookiesUser(r *http.Request) (PassportInfo,error) 
 	//验证cookies签名
 	sign := this.sign(user.Account)
 	if args[2] != sign {
-		return user,errors.New("cookies签名验证失败,可能cookies被篡改")
+		return user,errors.New(this.getErrMsg(ERR_CK_SIGN_FAIL))//"cookies签名验证失败,可能cookies被篡改"
 	}
 	// 如果需要互踢的话,就要验证account的时间戳
 	if this.LoginUserUnique {
 		if args[1] != fmt.Sprint(user.LoginDate){
-			return user,errors.New("服务器设置了用户互踢,同一个账号同一时间只能登陆一个用户")
+			return user,errors.New(this.getErrMsg(ERR_KICK_USER))//"服务器设置了用户互踢,同一个账号同一时间只能登陆一个用户"
 		}
 	}
 	return user,nil
@@ -270,10 +285,10 @@ func (this *BooisPassport) Register(user PassportInfo) (PassportInfo,error) {
 	}
 	// 3. 检查account和nickname是否已经存在
 	if this.BooisPassportAdapter.ChkAccountExists(user.Account) {
-		return user,errors.New("账号已经存在")
+		return user,errors.New(this.getErrMsg(ERR_ACC_EXISTS))//"账号已经存在"
 	}
 	if !this.AllowNicknameRepeat && this.BooisPassportAdapter.ChkNickNameExists(user.Nickname){
-		return user,errors.New("昵称已经存在")
+		return user,errors.New(this.getErrMsg(ERR_NICKNAME_EXISTS))//"昵称已经存在"
 	}
 	// 4. 检查通过后,将注册对象交给Reg
 	if err:= this.BooisPassportAdapter.Reg(user);err != nil {

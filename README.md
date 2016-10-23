@@ -18,12 +18,12 @@
 ```golang
 /*
 这个文件配置了登陆所需的内容,依赖第三方组件
-go get github.com/boois/golang_login
+go get github.com/boois/golang_boois_passport
  */
 package front
 
 import (
-    "github.com/boois/golang_boois_passport"
+	"github.com/boois/golang_boois_passport"
 	"errors"
 )
 
@@ -62,11 +62,38 @@ func getSessionMap() map[string] boois_passport.PassportInfo{
 }
 //↑上面这个map是用来存放用户的登录信息的,实际使用中可以替换为memcached之类的缓存
 
+// 下面是自定义错误列表,可以自己定义相关的错误文字
+var errorMsgs map[int] string
+
+func myMsgsMap() map[int] string{
+	if errorMsgs == nil {
+		errorMsgs = make(map[int] string)
+		errorMsgs[boois_passport.ERR_ACC_EMPTY] = "账号不能为空"
+		errorMsgs[boois_passport.ERR_ACC_LEN_FAIL] = "2账号的长度只能为%d-%d"
+		errorMsgs[boois_passport.ERR_ACC_FMT_FAIL] = "3账号格式错误"
+		errorMsgs[boois_passport.ERR_PSW_EMPTY] = "密码不能为空"
+		errorMsgs[boois_passport.ERR_PSW_LEN_FAIL] = "密码的长度只能为%d-%d"
+		errorMsgs[boois_passport.ERR_PSW_FMT_FAIL] = "密码格式错误"
+		errorMsgs[boois_passport.ERR_TIME_LOCKED] = "超过了错误次数,请稍后在%d秒后再试"
+		errorMsgs[boois_passport.ERR_PSW_FAIL] = "密码错误,还有%d次机会"
+		errorMsgs[boois_passport.ERR_USER_LOCKED] = "您已被锁定登录,请联系管理员解锁"
+		errorMsgs[boois_passport.ERR_USER_NONE] = "没有获取到用户资料"
+		errorMsgs[boois_passport.ERR_CK_FAIL] = "cookies记录读取失败"
+		errorMsgs[boois_passport.ERR_CK_SIGN_FAIL] = "cookies签名验证失败,可能cookies被篡改"
+		errorMsgs[boois_passport.ERR_KICK_USER] = "服务器设置了用户互踢,同一个账号同一时间只能登陆一个用户"
+		errorMsgs[boois_passport.ERR_ACC_EXISTS] = "账号已经存在"
+		errorMsgs[boois_passport.ERR_NICKNAME_EXISTS] = "昵称已经存在"
+	}
+	return errorMsgs
+}
+
+
 var login *boois_passport.BooisPassport = nil
 func BooisPassport() *boois_passport.BooisPassport {
 	if login == nil {
 		login = &boois_passport.BooisPassport{ // 登陆配置
-			BooisPassportAdapter:&LoginAdapter{},
+			BooisPassportAdapter:&MyPassportAdapter{},
+			ErrorMsgs:myMsgsMap(),
 			AccountRegex:"^[a-zA-Z][a-zA-Z0-9_]*$",
 			AccountMinLen:4,
 			AccountMaxLen:24,
@@ -83,82 +110,82 @@ func BooisPassport() *boois_passport.BooisPassport {
 	return login
 }
 
-type LoginAdapter struct {}
+type MyPassportAdapter struct {}
 
 // 用来连接数据库来获取用户资料,用来返回给login组件来进行登陆判断
-func (this LoginAdapter) GetPassportInfoByAccount(account string) (boois_passport.PassportInfo,error){
+func (this MyPassportAdapter) GetPassportInfoByAccount(account string) (boois_passport.PassportInfo,error){
 	if v,ok := getUserDataSource()[account];ok{
 		return v,nil
 	}
 	return boois_passport.PassportInfo{},errors.New("账号错误!")
 }
 // 登录前的预处理动作,用来给accout和psw做一些处理,如:字母转小写,转义等
-func (this LoginAdapter) BeforeLogin(account string,psw string)  error{
+func (this MyPassportAdapter) BeforeLogin(account string,psw string)  error{
 	return nil
 }
 // 登录前的预处理动作,用来给accout和psw做一些处理,如:字母转小写,转义等
-func (this LoginAdapter) LoginOk(user boois_passport.PassportInfo)  error{
+func (this MyPassportAdapter) LoginOk(user boois_passport.PassportInfo)  error{
 	return nil
 }
 // 登录失败时的处理动作,可以用来记录日志锁定用户等,errCount是错误的次数,errTimeSpan是锁定解除的剩余时间
-func (this LoginAdapter) LoginFail(account string, err error, errCount int, errTimeSpan int64){
+func (this MyPassportAdapter) LoginFail(account string, err error, errCount int, errTimeSpan int64){
 	println("登陆失败")
 }
 // 登出之前的动作,如果返回的err不为nil可以阻止登出
-func (this LoginAdapter) BeforeLogout(key string) error{
+func (this MyPassportAdapter) BeforeLogout(key string) error{
 	return nil
 }
 // 登出之后的动作,比如清理关联缓存或者记录下登出时间
-func (this LoginAdapter) AfterLogout(account string){
+func (this MyPassportAdapter) AfterLogout(account string){
 
 }
 // 设置session
-func (this LoginAdapter) SetSession(account string, user boois_passport.PassportInfo){
+func (this MyPassportAdapter) SetSession(account string, user boois_passport.PassportInfo){
 	getSessionMap()[account] = user
 }
 // 获取session
-func (this LoginAdapter) GetSession(account string) (boois_passport.PassportInfo,error){
+func (this MyPassportAdapter) GetSession(account string) (boois_passport.PassportInfo,error){
 	if v,ok := getSessionMap()[account];ok{
 		return v,nil
 	}
 	return boois_passport.PassportInfo{},errors.New("没有找到用户")
 }
 // 删除session
-func (this LoginAdapter) DelSession(account string){
+func (this MyPassportAdapter) DelSession(account string){
 	delete(getSessionMap(),account)
 }
 // 密码加密方法
-func (this LoginAdapter) EncryptPsw(psw string) string{
+func (this MyPassportAdapter) EncryptPsw(psw string) string{
 	return psw
 }
 // 向数据源中添加一个用户账号
-func (this LoginAdapter) AddAccount(user boois_passport.PassportInfo) error  {
+func (this MyPassportAdapter) AddAccount(user boois_passport.PassportInfo) error  {
 	return nil
 }
 // 检查一个账号是否已经存在
-func (this LoginAdapter) ChkAccountExists(account string) bool  {
+func (this MyPassportAdapter) ChkAccountExists(account string) bool  {
 	if _,ok := getUserDataSource()[account];ok{
 		return true
 	}
 	return false
 }
 // 检查一个昵称是否已经存在
-func (this LoginAdapter) ChkNickNameExists(nickname string) bool  {
+func (this MyPassportAdapter) ChkNickNameExists(nickname string) bool  {
 	return false
 }
 // 注册前的预处理操作
-func (this LoginAdapter) BeforeReg(user boois_passport.PassportInfo) error{
+func (this MyPassportAdapter) BeforeReg(user boois_passport.PassportInfo) error{
 	return nil
 }
 // 开始在后端进行注册操作
-func (this LoginAdapter) Reg(user boois_passport.PassportInfo) error{
+func (this MyPassportAdapter) Reg(user boois_passport.PassportInfo) error{
 	// 这里向数据源写入数据,密码如果需要加密请记得使用和当前一致的密码加密方式 this.EncryptPsw
 	getUserDataSource()[user.Account] = user
 	println("成功添加一个用户")
 	return nil
 }
 // 注册失败的处理动作,可以记录失败日志等情况
-func (this LoginAdapter) RegFail(user boois_passport.PassportInfo, err error){
+func (this MyPassportAdapter) RegFail(user boois_passport.PassportInfo, err error){
 
 }
 ```
