@@ -11,7 +11,6 @@ type BooisPassportAdapter interface {
 	GetSession(account string) (PassportInfo,error) // 获取session
 	DelSession(account string) // 删除session
 	EncryptPsw(psw string) string // 将原始密码加密的方法,请全局保持一致
-	AddAccount(user PassportInfo) error // 向数据源中添加一个用户账号
 	ChkAccountExists(account string) bool // 检查一个账号是否已经存在
 	ChkNickNameExists(nickname string) bool // 检查一个昵称是否已经存在
 	BeforeReg(user PassportInfo) error // 注册前的预处理操作

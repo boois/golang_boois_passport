@@ -158,10 +158,6 @@ func (this MyPassportAdapter) DelSession(account string){
 func (this MyPassportAdapter) EncryptPsw(psw string) string{
 	return psw
 }
-// 向数据源中添加一个用户账号
-func (this MyPassportAdapter) AddAccount(user boois_passport.PassportInfo) error  {
-	return nil
-}
 // 检查一个账号是否已经存在
 func (this MyPassportAdapter) ChkAccountExists(account string) bool  {
 	if _,ok := getUserDataSource()[account];ok{
