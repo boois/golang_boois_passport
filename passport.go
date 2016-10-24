@@ -141,7 +141,7 @@ func (this *BooisPassport) sign(v string) string{
 // 登陆
 func (this *BooisPassport) Login(w http.ResponseWriter,account string, psw string) (PassportInfo,error) {
 	// 1.预处理登陆前的事件
-	if err := this.BooisPassportAdapter.BeforeLogin(account,psw);err != nil {
+	if err := this.BooisPassportAdapter.BeforeLogin(&account,&psw);err != nil {
 		this.loginFail(account,err) // 失败回调
 		return PassportInfo{},err
 	}
@@ -270,7 +270,7 @@ func (this *BooisPassport) GetCookiesUser(r *http.Request) (PassportInfo,error) 
 // 注册一个用户
 func (this *BooisPassport) Register(user PassportInfo) (PassportInfo,error) {
 	// 1.预处理登陆前的事件
-	if err := this.BooisPassportAdapter.BeforeReg(user);err != nil {
+	if err := this.BooisPassportAdapter.BeforeReg(&user);err != nil {
 		this.BooisPassportAdapter.RegFail(user,err) // 失败回调
 		return user,err
 	}
